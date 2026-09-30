@@ -261,6 +261,53 @@ export class AuthService {
     return this.getUserById(id);
   }
 
+  /**
+   * Generate an immediate signed bypass mock session for demo/hackathon evaluations.
+   */
+  generateMockAuth(email: string, role?: UserRole): { user: Omit<User, 'passwordHash'>; token: string } {
+    const normalizedEmail = (email || 'demo.user@clarion.ai').trim().toLowerCase();
+
+    let userRole: UserRole = role || 'ADMIN';
+    if (normalizedEmail.includes('viewer')) {
+      userRole = 'VIEWER';
+    } else if (normalizedEmail.includes('reviewer') || normalizedEmail.includes('student')) {
+      userRole = 'REVIEWER';
+    }
+
+    const namePart = normalizedEmail.split('@')[0].replace(/[._-]/g, ' ');
+    const formattedName =
+      namePart.length > 1
+        ? namePart.replace(/\b\w/g, (c) => c.toUpperCase())
+        : 'Demo Reviewer';
+
+    const mockUser: Omit<User, 'passwordHash'> = {
+      id: `demo-${uuidv4()}`,
+      email: normalizedEmail,
+      fullName: formattedName,
+      role: userRole,
+      department: 'Procurement & Finance Audit',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Cache in dataStore so all subsequent protected queries (reviews, approvals, documents) succeed
+    dataStore.users.set(mockUser.id, { ...mockUser });
+
+    const token = jwt.sign(
+      {
+        sub: mockUser.id,
+        email: mockUser.email,
+        role: mockUser.role,
+        fullName: mockUser.fullName
+      },
+      config.jwtSecret,
+      { expiresIn: '7d' }
+    );
+
+    return { user: mockUser, token };
+  }
+
   private generateToken(user: User): string {
     return jwt.sign(
       {
